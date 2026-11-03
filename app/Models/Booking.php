@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Enums\BookingStatus;
 
 class Booking extends Model
 {
@@ -12,6 +13,7 @@ class Booking extends Model
     protected $casts = [
         'start_time' => 'datetime',
         'end_time' => 'datetime',
+        'status' => BookingStatus::class,
     ];
 
     public function user(): BelongsTo

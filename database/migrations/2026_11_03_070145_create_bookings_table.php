@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\BookingStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -17,7 +18,7 @@ return new class extends Migration
             $table->foreignId('resource_id')->constrained()->cascadeOnDelete();
             $table->dateTime('start_time');
             $table->dateTime('end_time');
-            $table->string('status')->default('confirmed'); // confirmed, cancelled, completed
+            $table->string('status')->default(BookingStatus::Confirmed->value);
             $table->timestamps();
 
             // Composite index for conflict detection queries
