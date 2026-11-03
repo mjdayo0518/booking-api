@@ -9,6 +9,8 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
+use App\Jobs\SendBookingConfirmation;
+use Illuminate\Support\Facades\Queue;
 
 class BookingConflictTest extends TestCase
 {
@@ -96,5 +98,18 @@ class BookingConflictTest extends TestCase
         ]);
 
         $response->assertStatus(201);
+    }
+    
+    public function test_dispatches_confirmation_job_after_booking(): void
+    {
+        Queue::fake();
+
+        $this->postJson('/api/bookings', [
+            'resource_id' => $this->resource->id,
+            'start_time' => '2026-11-10 09:00:00',
+            'end_time' => '2026-11-10 10:00:00',
+        ])->assertStatus(201);
+
+        Queue::assertPushed(SendBookingConfirmation::class);
     }
 }

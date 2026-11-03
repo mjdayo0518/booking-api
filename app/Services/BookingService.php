@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\BookingStatus;
 use App\Exceptions\BookingConflictException;
+use App\Jobs\SendBookingConfirmation;
 use App\Models\Booking;
 use Illuminate\Support\Facades\DB;
 
@@ -32,13 +33,18 @@ class BookingService
                 throw new BookingConflictException();
             }
 
-            return Booking::create([
+            $booking =  Booking::create([
                 'user_id' => auth()->id(),
                 'resource_id' => $data['resource_id'],
                 'start_time' => $data['start_time'],
                 'end_time' => $data['end_time'],
                 'status' => BookingStatus::Confirmed,
             ]);
+
+            SendBookingConfirmation::dispatch($booking);
+
+            return $booking;
         });
+
     }
 }
