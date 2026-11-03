@@ -1,58 +1,220 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Booking API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A clean Laravel API for reserving shared resources (e.g., meeting rooms and equipment), demonstrating production-grade practices around concurrency, asynchronous processing, and automated testing.
 
-## About Laravel
+## Tech Stack
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **Laravel:** 13
+- **PHP:** 8.3
+- **Database:** SQLite (development), MySQL/PostgreSQL ready
+- **Authentication:** Laravel Sanctum
+- **Queue:** Database queue driver with `after_commit` safety
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Quick Start
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+1. Clone the repository.
 
-## Learning Laravel
+2. Copy the environment file:
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+   ```bash
+   cp .env.example .env
+   ```
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+3. Install dependencies:
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+   ```bash
+   composer install
+   ```
 
-## Agentic Development
+4. Generate the application key:
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+   ```bash
+   php artisan key:generate
+   ```
+
+5. Create the SQLite database:
+
+   ```bash
+   touch database/database.sqlite
+   ```
+
+6. Run migrations and seeders:
+
+   ```bash
+   php artisan migrate --seed
+   ```
+
+7. Start the development server:
+
+   ```bash
+   php artisan serve
+   ```
+
+The API will be available at:
+
+[http://127.0.0.1:8000](http://127.0.0.1:8000)
+
+## Test User
+
+Seed data includes a test user:
+
+| Field | Value |
+|---|---|
+| Email | `test@example.com` |
+| Password | `password` |
+
+### Generate an API Token
+
+Open Laravel Tinker:
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+php artisan tinker
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Generate a Sanctum API token:
 
-## Contributing
+```php
+$user = App\Models\User::where('email', 'test@example.com')->first();
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+echo $user->createToken('dev')->plainTextToken;
+```
 
-## Code of Conduct
+Use the generated token when authenticating API requests.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Core Features
 
-## Security Vulnerabilities
+### 1. Booking Creation with Conflict Detection
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Creating a booking requires an authenticated request.
+
+**Endpoint**
+
+```http
+POST /api/bookings
+```
+
+**Headers**
+
+```http
+Authorization: Bearer YOUR_TOKEN
+Content-Type: application/json
+Accept: application/json
+```
+
+**Request Payload**
+
+```json
+{
+    "resource_id": 1,
+    "start_time": "2026-11-10 09:00:00",
+    "end_time": "2026-11-10 10:00:00"
+}
+```
+
+**Double-Booking Prevention**
+
+The booking service uses a database transaction with `lockForUpdate()` to prevent concurrent requests from creating overlapping bookings.
+
+When multiple requests target overlapping time slots, only one booking should succeed. Conflicting requests receive a `409 Conflict` response.
+
+**Overlap Detection**
+
+The implementation uses the standard interval overlap formula:
+
+- `existing.start_time < requested.end_time`
+- `existing.end_time > requested.start_time`
+
+This ensures:
+
+- Overlapping bookings are rejected.
+- Adjacent bookings are allowed (e.g., 09:00–10:00 and 10:00–11:00).
+- Cancelled bookings do not block new bookings.
+
+### 2. Asynchronous Booking Confirmation
+
+After a successful booking, a `SendBookingConfirmation` job is dispatched.
+
+**Development**
+
+For easy debugging, configure the queue driver to run jobs synchronously:
+
+```env
+QUEUE_CONNECTION=sync
+```
+
+**Production**
+
+Switch to a database or Redis queue driver and run the queue worker:
+
+```bash
+php artisan queue:work
+```
+
+The `after_commit` configuration ensures jobs are dispatched only after the booking transaction successfully commits.
+
+This prevents jobs from processing bookings that have not yet been committed to the database.
+
+## Testing
+
+Run the automated test suite:
+
+```bash
+php artisan test
+```
+
+### Feature Test Coverage
+
+The feature tests cover:
+
+- Successful booking creation.
+- Rejection of overlapping bookings (`409 Conflict`).
+- Allowance of adjacent bookings.
+- Cancelled bookings do not block new bookings.
+- Confirmation job is dispatched after successful booking creation.
+
+## Architecture Notes
+
+### Service Layer
+
+Booking business logic lives in `App\Services\BookingService` rather than directly in controllers.
+
+This keeps controllers thin, separates business logic from HTTP concerns, and makes the implementation easier to test and maintain.
+
+### Custom Exception
+
+`BookingConflictException` handles booking conflicts and automatically renders a `409 Conflict` response.
+
+Controllers do not need additional try/catch blocks for booking conflicts.
+
+### Enum Status
+
+The `BookingStatus` enum provides type-safe booking status values instead of relying on hardcoded strings.
+
+### Composite Database Index
+
+The bookings table uses a composite index on:
+
+```sql
+(resource_id, start_time, end_time)
+```
+
+This helps optimize booking conflict queries as the application grows.
+
+### Database Flexibility
+
+SQLite is used during development to provide a zero-configuration setup for reviewers.
+
+The application can switch to MySQL or PostgreSQL through environment configuration without requiring application code changes.
+
+## Future Work
+
+Potential improvements include:
+
+- Resource availability windows (business hours).
+- Booking rescheduling and cancellation endpoints.
+- Admin views for managing all bookings.
+- Rate limiting per user.
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+This project is licensed under the [MIT License](LICENSE).
